@@ -46,12 +46,14 @@ def registar_analytic():
     return response
 
 
-def detect(handler):
+def detect(handler, frame_override=None):
     '''
-    Just run predictions, Simplify code, easy to understand
     Inputs:
         handler (ace.analytichandler.FrameHandler) - ace frame handler obj (https://github.com/usnistgov/ACE/blob/develop/lang/python/ace/analytichandler.py#L50)
     '''
+    if not os.path.exists('processed_data'):
+        os.makedirs('processed_data')
+
     movement_data_file = open('processed_data/movement_data.csv', 'w')
     crowd_data_file = open('processed_data/crowd_data.csv', 'w')
     # sd_violate_data_file = open('sd_violate_data.csv', 'w')
@@ -62,37 +64,37 @@ def detect(handler):
     # sd_violate_writer = csv.writer(sd_violate_data_file)
     # restricted_entry_data_writer = csv.writer(restricted_entry_data_file)
 
-    if not os.path.exists('processed_data'):
-        os.makedirs('processed_data')
-
     if os.path.getsize('processed_data/movement_data.csv') == 0:
         movement_data_writer.writerow(['Track ID', 'Entry time', 'Exit Time', 'Movement Tracks'])
     if os.path.getsize('processed_data/crowd_data.csv') == 0:
         crowd_data_writer.writerow(
             ['Time', 'Human Count', 'Social Distance violate', 'Restricted Entry', 'Abnormal Activity'])
-
-    boxes = video_process(cap, FRAME_SIZE, net, ln, encoder, tracker, movement_data_writer, crowd_data_writer)
+    frame, bboxes = video_process(handler, FRAME_SIZE, net, ln, encoder, tracker, movement_data_writer, crowd_data_writer, frame_override=frame_override)
     movement_data_file.close()
     crowd_data_file.close()
-    for b in boxes:
-        # x1 ... looks like this is the format based on code, probably need to verify
-        handler.add_bounding_box(
-            classification=b[0],
-            confidence=float(b[1]),
-            x1=int(b[2][0]),
-            y1=int(b[2][1]),
-            x2=int(b[2][2]),
-            y2=int(b[2][3]))
-
+    if frame_override is None:
+        for b in bboxes:
+            # x1 ... looks like this is the format based on code, probably need to verify
+            handler.add_bounding_box(
+                classification=b[0],
+                confidence=float(b[1]),
+                x1=int(b[2][0]),
+                y1=int(b[2][1]),
+                x2=int(b[2][2]),
+                y2=int(b[2][3]))
+    return frame, bboxes
 
 if __name__ == '__main__':
     print("start")
-    """parser = argparse.ArgumentParser()
-    parser.add_argument('--load', default="/data/model/model-7400", help='load a model for evaluation.', required=True)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--test_on_video', default="", help="Do not use ACE, just run on a video file")
     parser.add_argument("--grpc", default=False,
                         help="If true, this analytic will set up a gRPC service instead of a REST service.",
                         action="store_true")
     parser.add_argument("--grpc_port", default=50052, help="Port the analytic will run on.")
+    args = parser.parse_args()
+    """
+    parser.add_argument('--load', default="/data/model/model-7400", help='load a model for evaluation.', required=True)
 
     '''
     # TF serving would be nice to use, but would for quick ACE demo, skip for now
@@ -100,7 +102,6 @@ if __name__ == '__main__':
     parser.add_argument('--output-serving', help='Save a model to serving file')
     '''
 
-    args = parser.parse_args()
     register_coco(cfg.DATA.BASEDIR)  # add COCO datasets to the registry
     """
     '''
@@ -108,7 +109,7 @@ if __name__ == '__main__':
     '''
     # Read from video
     IS_CAM = VIDEO_CONFIG["IS_CAM"]
-    cap = cv2.VideoCapture(VIDEO_CONFIG["VIDEO_CAP"])
+    #cap = cv2.VideoCapture(VIDEO_CONFIG["VIDEO_CAP"])
 
     # Load YOLOv3-tiny weights and config
     WEIGHTS_PATH = YOLO_CONFIG["WEIGHTS_PATH"]
@@ -145,18 +146,29 @@ if __name__ == '__main__':
     '''
     Registar Analytic with ACE
     '''
-    registar_analytic()
-
-    '''
-    Run ACE Service
-    '''
-    if args.grpc:
-        svc = grpcservice.AnalyticServiceGRPC()
-        svc.register_name("crowd-analysis")
-        svc.RegisterProcessVideoFrame(detect)
-        sys.exit(svc.Run(analytic_port=args.grpc_port))
+    if args.test_on_video != "":
+        cap = cv2.VideoCapture(args.test_on_video)
+        print(cap.isOpened())
+        while cap.isOpened():
+            ret, cvFrame = cap.read()
+            img, boxes = detect(handler=None, frame_override=cvFrame)
+            cv2.imshow('frame', img)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                cap.release()
+                cv2.destroyAllWindows()
+        exit(0)
     else:
-        svc = analyticservice.AnalyticService(__name__, )
-        svc.register_name("crowd-analysis")
-        svc.RegisterProcessVideoFrame(detect)
-        sys.exit(svc.Run())
+        registar_analytic()
+        '''
+        Run ACE Service
+        '''
+        if args.grpc:
+            svc = grpcservice.AnalyticServiceGRPC()
+            svc.register_name("crowd-analysis")
+            svc.RegisterProcessVideoFrame(detect)
+            sys.exit(svc.Run(analytic_port=args.grpc_port))
+        else:
+            svc = analyticservice.AnalyticService(__name__, )
+            svc.register_name("crowd-analysis")
+            svc.RegisterProcessVideoFrame(detect)
+            sys.exit(svc.Run())

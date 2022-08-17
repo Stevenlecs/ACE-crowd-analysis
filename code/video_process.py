@@ -40,7 +40,7 @@ def _end_video(tracker, frame_count, movement_data_writer):
 			_record_movement_data(movement_data_writer, t)
 
 
-def video_process(handler, frame_size, net, ln, encoder, tracker, movement_data_writer, crowd_data_writer):
+def video_process(handler, frame_size, net, ln, encoder, tracker, movement_data_writer, crowd_data_writer, frame_override=None):
 	"""def _calculate_FPS():
 		t1 = time.time() - t0
 		VID_FPS = frame_count / t1
@@ -55,8 +55,9 @@ def video_process(handler, frame_size, net, ln, encoder, tracker, movement_data_
 		DATA_RECORD_FRAME = int(VID_FPS / DATA_RECORD_RATE)
 		TIME_STEP = DATA_RECORD_FRAME/VID_FPS"""
 	boxes = []
-	frame_count = handler.timestamp()
-	display_frame_count = handler.timestamp()
+	frame = None
+	frame_count = 0
+	display_frame_count = 0
 	re_warning_timeout = 0
 	sd_warning_timeout = 0
 	ab_warning_timeout = 0
@@ -64,8 +65,10 @@ def video_process(handler, frame_size, net, ln, encoder, tracker, movement_data_
 	RE = False
 	ABNORMAL = False
 
-	frame = handler.get_frame()
-
+	if frame_override is None:
+		frame = handler.get_frame()
+	else:
+		frame = frame_override
 	# Stop the loop when video ends
 	"""if not ret:
 		_end_video(tracker, frame_count, movement_data_writer)
@@ -101,7 +104,6 @@ def video_process(handler, frame_size, net, ln, encoder, tracker, movement_data_
 
 	# Run tracking algorithm
 	[humans_detected, expired, confidences] = detect_human(net, ln, frame, encoder, tracker, record_time)
-
 	# Record movement data
 	for movement in expired:
 		_record_movement_data(movement_data_writer, movement)
@@ -130,7 +132,8 @@ def video_process(handler, frame_size, net, ln, encoder, tracker, movement_data_
 			[cx, cy] = list(map(int, track.positions[-1]))
 			# Get object id
 			idx = track.track_id
-			boxes.append([idx, confidences[i], [x, y, x+w, y+h]])
+			boxes.append([idx, confidences[i], [x, y, w, h]])
+			cv2.rectangle(frame, (x, y), (w, h), RGB_COLORS["yellow"], 2)
 			# Check for social distance violation
 			"""if SD_CHECK:
 				if len(humans_detected) >= 2:
@@ -252,4 +255,4 @@ def video_process(handler, frame_size, net, ln, encoder, tracker, movement_data_
 			_calculate_FPS()
 		break"""
 
-	return boxes
+	return frame, boxes
