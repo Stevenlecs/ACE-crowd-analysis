@@ -134,6 +134,8 @@ def video_process(handler, frame_size, net, ln, encoder, tracker, movement_data_
 			idx = track.track_id
 			boxes.append([idx, confidences[i], [x, y, w, h]])
 			cv2.rectangle(frame, (x, y), (w, h), RGB_COLORS["yellow"], 2)
+			cv2.putText(frame, str(confidences[i]), (x, y),
+						cv2.FONT_HERSHEY_SIMPLEX, 0.5, RGB_COLORS["red"], 1)
 			# Check for social distance violation
 			"""if SD_CHECK:
 				if len(humans_detected) >= 2:
